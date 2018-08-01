@@ -7,6 +7,8 @@ spec:
   ports:
   - port: 80
     targetPort: 8080
+#specifying a node port is not necessary. k8s can randomly assign it
+#this node port will be reserved on all nodes in the cluster
     nodePort: 30123
   selector:
     app: kubia

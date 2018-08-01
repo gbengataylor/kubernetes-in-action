@@ -1,2 +1,65 @@
-services don't link to pods directly, there is a resource in-between - Endpoints. 
+services don't link to pods directly, there is a resource in-between - Endpoints.  if you do a describe on the services you can see the endpoints
 for external services there is no pod selector adn the endpoints have to be created manually
+the external service can reference an external name - fully quailfied name of actual service 
+After the service is created, pods can connect to the external service through the
+external-service.default.svc.cluster.local domain name (or even external-
+service ) instead of using the service’s actual FQDN. This hides the actual service
+name and its location from pods consuming the service, allowing you to modify the
+service definition and point it to a different service any time later, by only changing
+the externalName attribute or by changing the type back to ClusterIP and creating
+an Endpoints object for the service—either manually or by specifying a label selector
+on the service and having it created automatically.
+ExternalName services are implemented solely at the DNS level—a simple CNAME
+DNS record is created for the service. Therefore, clients connecting to the service will
+connect to the external service directly, bypassing the service proxy completely. For
+this reason, these types of services don’t even get a cluster IP.
+A CNAME record points to a fully qualified domain name instead of a
+numeric IP address.
+
+pods have env variables that have the service IP and port. however if the service changes or is created after the pod, the pod won't have this info or will be stale. use the kube dns instead
+
+
+Session affinity and web browsers
+Because your service is now exposed externally, you may try accessing it with your
+web browser. You’ll see something that may strike you as odd—the browser will hit
+the exact same pod every time. Did the service’s session affinity change in the
+meantime? With kubectl explain, you can double-check that the service’s session
+affinity is still set to None, so why don’t different browser requests hit different
+pods, as is the case when using curl?
+Let me explain what’s happening. The browser is using keep-alive connections and
+sends all its requests through a single connection, whereas curl opens a new
+connection every time. Services work at the connection level, so when a connection to a
+service is first opened, a random pod is selected and then all network packets belonging
+to that connection are all sent to that single pod. Even if session affinity is set to None,
+users will always hit the same pod (until the connection is closed).
+
+
+is an openshift route just an enhanced Ingress Resource? it operates at the app layer of the network stack (http) and can provide features such as cookie-based session affinity and the like which services cant...sounds familiar to me
+
+it does look like an ingress can match to multiple services...
+routes usually map to one but can map to at least 2 with some weighting...so maybe thats a difference??...
+
+some implementations of k8s don't have an implementation of the ingress controller. minikube has one that can be enabled as an addon.  
+is the router pod OCP implementation of the ingress router?
+
+an ingress router can map to multiple named host
+each named host in an ingress router can map to multiple paths
+each path can map to a service
+..we can have multiple paths that map to a router
+
+When a client opens a TLS connection to an Ingress controller, the controller termi-
+nates the TLS connection. The communication between the client and the controller
+is encrypted, whereas the communication between the controller and the backend
+pod isn’t. The application running in the pod doesn’t need to support TLS. For exam-
+ple, if the pod runs a web server, it can accept only HTTP traffic and let the Ingress
+controller take care of everything related to TLS. To enable the controller to do that,
+you need to attach a certificate and a private key to the Ingress. The two need to be
+stored in a Kubernetes resource called a Secret, which is then referenced in the
+Ingress manifest.
+
+routes have similar functionality when they terminate the route at edge
+
+
+if you want to be able to discover pods that are not ready there is an annotation that can be added to the service
+
+page 157 has suggestions on how to troubleshoot a service

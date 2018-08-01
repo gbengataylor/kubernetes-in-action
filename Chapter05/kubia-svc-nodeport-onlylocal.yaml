@@ -4,6 +4,9 @@ metadata:
   name: kubia-nodeport-onlylocal
 spec:
   type: NodePort
+#rather than taking the extra hop to the service, it will choose the locally running pod
+#howeer if the pod doesn't exist on the node, it will hang ..it doesn't get forwarded
+#also this has consequences in loadbalancing
   externalTrafficPolicy: Local
   ports:
   - port: 80
