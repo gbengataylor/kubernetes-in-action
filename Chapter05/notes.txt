@@ -1,0 +1,2 @@
+services don't link to pods directly, there is a resource in-between - Endpoints. 
+for external services there is no pod selector adn the endpoints have to be created manually

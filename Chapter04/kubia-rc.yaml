@@ -6,6 +6,7 @@ spec:
   replicas: 3
   selector:
     app: kubia
+#starting pod template with label for the selector and then spec.container
   template:
     metadata:
       labels:
