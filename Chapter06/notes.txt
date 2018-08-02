@@ -1,0 +1,110 @@
+containers can share CPU, network, memory but not storage since a containers storage is defined in the container image file system
+volumes are at the pod level. containers in the same  pod can read/write to the same volume but each container must mount it to access the volume. in each container you can mount the volume to another location within its filesystem (need to define a volumeMount)
+
+volumes are not standalone k8s objects, cannot be created or deleted on their own
+
+emptyDir
+- simplest type
+- starts empty
+- lifetime tied to that of the pod. contents lost when pod deleted
+- useful for sharing files between containers in same pod
+- also useful for writing data to disk temporarily (especially when the container's filessytem is not writable)
+- the vloume is gcreated on the actual disk of the work node hosting your pod, so performance depends on the type of disk. it's possible to tell k8s to create the volume on a tmpfs filesystem ie. in memory instead of disk. set the medium to Memory (see pag 166)
+An emptyDir volume is the simplest type of volume, but other types build upon it.
+After the empty directory is created, they populate it with data. One such volume type
+is the gitRepo volume type, which we’ll introduce next.
+- in OCP, all the templates that use ephemeral storage likely use emptyDir
+
+gitRepo
+- emptyDir populated with contents from a gitRepo
+- the volume is NOT kept in sync with git repo
+- can't use this volume with a private git repo
+- when pod is deleted, all contents are deleted
+
+other types of volumes mount an existing exernal directory into the container's filesystem that can survive multiple pod instantations.
+
+hostPath
+ - pods generally oblivious of their host node so shouldn't access ay files on the nodes filesystem
+- certain system level pods need to read node's files or use node's filessytem to access the node's devices through the filesystmem.
+- pods running on the same node and using the same path in their hostPath volume see the same files
+- when pod(s) deleted, contents not deleted unlike gitRepo and emptyDir
+- however, if the pod is rescheduled to another node, it won't see the contents since this type of volume is tied to the node
+- ONLY use this when you want to read or write system files on a node. DON't use if you want to persist data across pods
+
+Persistent Storage
+- use one of the various types to persist data from pod to pod
+- gcePersistentDisk:, nfs,  awsElasticBlockStore, etc
+
+
+all different kinds, but do we really need the developer to know the underlying storage?
+- you can decouple pods from the underlying storage tech
+- PersistentVolumes and PersistentVolumeClaims
+steps:
+ - cluster admin setups some cluster network storage
+- admin creates a PV by posting a PV descriptor to the k8s API
+ - user createa PVC
+ - k8s finds a PV of adequate size and access mode and binds the PVC to the PV
+- user creates a pod with a volume referencing the PVC
+- PVs are cluster-level like nodes not restricted to a namespace
+- making a PVC is complete process from a pod since you want PVC to remain available even if a pod is rescheduled
+
+RWO — ReadWriteOnce —Only a single node can mount the volume for reading and writing.
+ROX — ReadOnlyMany —Multiple nodes can mount the volume for reading.
+RWX — ReadWriteMany —Multiple nodes can mount the volume for both reading `and writing.
+Note: this is the worker nodes not the pods!
+
+- PVCs are made within a namespace
+- the pod can now reference the pvc
+
+Note**
+if the PV reclaim policy is retain, and it was claimed then released (by deleting a pvc) then it can be reused.the only way to manually recylce th PV is to make it available again by deleting and recreating the PV. any files on the underlying storage you need decide what to do with it
+
+how do you relcaim PV dynamically?
+Recyle and Delete policies
+recycle removes the contents and makes the volume available to be claimed again
+delete removes the underlying storage
+recycle may not be supported by certain storages for example GKE
+**it's possible to change the policy of A PV. for e.g from Delete to Retain
+
+
+Dynamically provisioning PVs
+you still need an admin to provide the actual storage up front
+The cluster admin, instead of creating PersistentVolumes, can deploy a Persistent-
+Volume provisioner and define one or more StorageClass objects to let users choose
+what type of PersistentVolume they want. The users can refer to the StorageClass in
+their PersistentVolumeClaims and the provisioner will take that into account when
+provisioning the persistent storage.
+NOTE Similar to PersistentVolumes, StorageClass resources aren’t namespaced.
+Kubernetes includes provisioners for the most popular cloud providers, so the admin-
+istrator doesn’t always need to deploy a provisioner. But if Kubernetes is deployed
+on-premises, a custom provisioner needs to be deployed.
+Dynamic provisioning of PersistentVolumes
+need to define one or two (or more) StorageClasses and let the system create a new
+PersistentVolume each time one is requested through a PersistentVolumeClaim. The
+great thing about this is that it’s impossible to run out of PersistentVolumes (obviously,
+you can run out of storage space)
+
+when you create the PVC, specify the storage class
+
+The cluster admin can create multiple storage classes with different performance or
+other characteristics. The developer then decides which one is most appropriate for
+each claim they create.
+The nice thing about StorageClasses is the fact that claims refer to them by
+name. The PVC definitions are therefore portable across different clusters, as long
+as the StorageClass names are the same across all of them. To
+
+BUT** you can also create a PVC without specifying a StorageClass -- it will use the default storage class. the default storage class has an annotation set to true - storageclass.beta.kubernetes.io/is-default-class: "true" when you run a describe on it
+
+
+To summarize, the best way to attach per-
+sistent storage to a pod is to only create the PVC (with an explicitly specified storage-
+ClassName if necessary) and the pod (which refers to the PVC by name). Everything
+else is taken care of by the dynamic PersistentVolume provisioner.
+
+- cluster admin setups up a PV provisioner if one not already deployed
+- admin crreates one or more storage classes and marks one as a default
+- user creates a PVC referencing one of the storage classes
+- k8s looks up the storage classes and asks the provisioner to provision a new PV based on the claims access mode, storage size
+- provisioner provides the actual storage, creates the PV and binds to the PVC
+
+(

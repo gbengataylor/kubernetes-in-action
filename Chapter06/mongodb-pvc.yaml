@@ -8,4 +8,5 @@ spec:
       storage: 1Gi
   accessModes:
   - ReadWriteOnce
+# specifying an empty string as the storage class name ensures the PVC binds to a pre-provisioned PV instead of dynically provisioning a new one
   storageClassName: ""
