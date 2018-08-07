@@ -1,0 +1,136 @@
+apps need some configuration
+- can bake
+- environment vars
+- config files 
+
+rather than baking the config file into the image (causing rebuilds of the image), every time the config file changes, you could mount the config file to a volume. but that requires that the file is written to the volume before the containtainer is created. 
+
+use configMap,a special type of volume for this .
+
+Passing Command Line Arguments to containers
+ENTRYPOINT - defines the executable invoked when the container is started
+CMD - specifies the arguments tht get passed to the ENTRYPOINT. this can also be used to specify the command you want to execute when the image is run but ENTRYPOINT is the correct way and CMD should be used to define default arguments. The image can be run without specifying any arguments
+
+pg 193 talks about different between shell and exec process when specifying the ENTRYPOINT. always use the exec form since shell process is unnecessary`
+
+you can override the defaault in the CMD via command line argument
+
+when defining a pod you can choose to overrite BOTH ENTRYPOINT and CMD listing 7.3 pg 195
+
+ENTRYPOING - override with spec.containers.command
+CMD - override with spec.containers.args
+
+
+you can also specify env variables in a container definition
+unforunately there is no way to do this at the pod level. will have to do this for each container in a pod
+
+the drawback with hardcoding env vars in pod definition means you need different definitions for prod vs dev
+you should idealy decopuple the config from the pod descriptor
+this is where the configMap conses in..decoupling configuration from pod
+
+
+CONFIGMAPS
+key/value pairs where values range from short literals to full config files
+you app doesn't need to read the configMap directly or that it exists. 
+the contents are passed to containers as env vars or as files in a volume
+even though your app can read the contents via the k8s REST API, you'd want to keep your apps as k8s-agnostic as much as possible
+
+create one without using yaml descriptor
+ kubectl create configmap fortune-config --from-literal=sleep-inteval=25
+ you can specify multiple --from-literal key value pairs
+
+if you want a file or dir --from-file=config.file
+for directories there will be an individual map entry for each file in the specified dir but for only files whose name is a valid ConfigMap key
+
+you can have multiple --from-file
+
+figure 7.5 shows a diagram of how this is stored structurlly 
+
+How to get values from the map to the pod's container? 3 options
+1- setting an env variable using the spec.conatiners.env.valueFrom.configMapKeyRef field
+  - if the config map doesn't exist, the container referencing will fail to start, other containers not dependent will run.  
+  - to start the container even if configMap deosn't exist - configMapRef.optional : true
+
+2 Pass all entries of configMap as env variables all at once - spec.conatiners.envFrom.configMapRef
+
+3. pass a configMap entry as a command line argument see fortune-args-from-configmap as example. define the env that reads from configMap and then reference that env key in the args field
+
+4. use a configMap volume to expose configMap entries as Files
+ - you can expose the entire dir fortune-pod-configmap-volume.yaml
+ - or can expose certain items  e.g fortune-pod-configmap-volume-with-items.yaml
+ - in linux, mounting a filesystem onto a non-empty dir makes any original files in the dir inaccessible. so if you want to just add files to an existing dir, you have to mount individual configMap entries as fils without hiding other files in the dir - fortune-pod-configmap-volume-defaultMode.yaml...using the subPath property
+
+
+my takeaway - it's a way for your apps to pull properties in an agnostic way. your app can define the properties no matter how they are structured.
+
+Updating an app’s config without having to restart the app
+with configMap you can change variables when the app is running, however, the app needs to be able to deterct there has been a change and perform the reload. in future k8s may send a signal to process to reload
+
+you can edit the config map by changing the values within the config map
+these changes are done atomically, so if there are multiple files in the map, all the files are done atomically by k8s and all happen at once.
+how does this work? by symbolic links. when the data is updated, k8s creates a new directory, writes all the files to it, then relinks the symbolic link to new dir, effectively changing all files at once
+
+U NDERSTANDING THAT FILES MOUNTED INTO EXISTING DIRECTORIES DON ’ T GET UPDATED
+One big caveat relates to updating ConfigMap-backed volumes. If you’ve mounted a
+single file in the container instead of the whole volume, the file will not be updated!
+At least, this is true at the time of writing this chapter.
+For now, if you need to add an individual file and have it updated when you update
+its source ConfigMap, one workaround is to mount the whole volume into a different
+directory and then create a symbolic link pointing to the file in question. The sym-
+link can either be created in the container image itself, or you could create the
+symlink when the container starts.
+U NDERSTANDING THE CONSEQUENCES OF UPDATING A C ONFIG M AP
+One of the most important features of containers is their immutability, which allows
+us to be certain that no differences exist between multiple running containers created
+from the same image, so is it wrong to bypass this immutability by modifying a Config-
+Map used by running containers?
+The main problem occurs when the app doesn’t support reloading its configura-
+tion. This results in different running instances being configured differently—those
+pods that are created after the ConfigMap is changed will use the new config, whereas
+the old pods will still use the old one. And this isn’t limited to new pods. If a pod’s con-
+tainer is restarted (for whatever reason), the new process will also see the new config.
+Therefore, if the app doesn’t reload its config automatically, modifying an existing
+ConfigMap (while pods are using it) may not be a good idea.
+If the app does support reloading, modifying the ConfigMap usually isn’t such a
+big deal, but you do need to be aware that because files in the ConfigMap volumes
+aren’t updated synchronously across all running instances, the files in individual pods
+may be out of sync for up to a whole minute.
+
+
+Secrets
+k8s keeps them safe by making sure each Secret is only disctibuted to the nodes that run the pods that need access to the secret
+in the pods themselves secrets are stored in memory and NEVER written to physical storage
+from k8s 1.7 , etcd stores the secret in encrypted form, making it more secure than the past
+
+the default token secret
+this is mounted onto every container you run. this secret are credentials used to talk to the k8s API
+
+
+your secrets
+secret values are stored in Base64 encoding. this allows you to include binary data in YAML and JSON
+note:max size of secret is 1MB
+
+when creating a secret via a descriptor it's possible to use plain text. use the stringData property. not that is is write-only. when you retrieve the secret's yaml it will be in base64 encoded
+
+READING A S ECRET ’ S ENTRY IN A POD
+When you expose the Secret to a container through a secret volume, the value of the
+Secret entry is decoded and written to the file in its actual form (regardless if it’s plain
+text or binary). The same is also true when exposing the Secret entry through an envi-
+ronment variable. In both cases, the app doesn’t need to decode it, but can read the
+file’s contents or look up the environment variable value and use it directly.
+
+
+the filesystem mounted for secrets is tmpfs...so never stored on disk. for proof run
+ kubectl exec <pod> -c <optional_contaiener> -- mount  | grep <file system value that secret mount>
+
+Note**
+secrets can also be passed as env variables but not recommended, they may get exposed inadvertently. always use secret volumes for exposing secrets
+
+
+
+Image pull secrets
+sometimes you need to pull an image that requires credentials for access for e.g from a private repo
+
+kubectl create secret docker-registry mydockerhubsecret \
+--docker-username=myusername --docker-password=mypassword \
+--docker-email=my.email@provider.com

@@ -9,6 +9,7 @@ while :
 do
   echo $(date) Writing fortune to /var/htdocs/index.html
   /usr/games/fortune > /var/htdocs/index.html
+  #note that the interval is now an environment variable
   sleep $INTERVAL
 done
 

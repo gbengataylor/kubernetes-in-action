@@ -1,6 +1,7 @@
 #!/bin/bash
 trap "exit" SIGINT
 
+#grab the interval from command line
 INTERVAL=$1
 echo Configured to generate new fortune every $INTERVAL seconds
 

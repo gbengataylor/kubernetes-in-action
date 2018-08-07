@@ -33,4 +33,6 @@ spec:
   - name: config
     configMap:
       name: fortune-config
+#by default permissions set to 644 rw r r, you can change this via this setting
+#this makes it rw to only user and group and no one else
       defaultMode: 0660

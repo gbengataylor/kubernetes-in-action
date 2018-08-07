@@ -6,6 +6,6 @@ spec:
   imagePullSecrets:
   - name: mydockerhubsecret
   containers:
-  - image: username/private:tag
+  - image: gbengataylor/hellokuard:latest
     name: main
 

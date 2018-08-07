@@ -5,6 +5,7 @@ metadata:
 spec:
   containers:
   - image: luksa/fortune:env
+    #environment variable used in image
     env:
     - name: INTERVAL
       value: "30"
