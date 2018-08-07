@@ -24,6 +24,7 @@ spec:
         memory: 4Mi
     volumeMounts:
     - name: downward
+#mouting the downward volume under /etc/download
       mountPath: /etc/downward
   volumes:
   - name: downward

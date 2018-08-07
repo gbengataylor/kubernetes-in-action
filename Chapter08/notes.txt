@@ -1,0 +1,102 @@
+Passing metadata through the Downward API
+allos you to pass metadata about a pod and it's env thru env vars or files in a downwardAPI volume1
+
+The Downward API enables you to expose the pod’s own metadata to the processes
+running inside that pod. Currently, it allows you to pass the following information to
+your containers:
+ The pod’s name
+ The pod’s IP address
+ The namespace the pod belongs to
+ The name of the node the pod is running on
+ The name of the service account the pod is running under
+ The CPU and memory requests for each container
+ The CPU and memory limits for each container
+ The pod’s labels
+ The pod’s annotations
+
+everything but the labels and annotations can be passed with env variables. 
+
+
+examples to expose the metadata via variables and files
+- to expose labels and annotations, you have to use the volume
+- the reason why you can't expose these 2 via env variables is that you can change them when they are running but evn variables can't be changed updated and re-exposed
+
+
+UNDERSTANDING WHEN TO USE THE D OWNWARD API
+As you’ve seen, using the Downward API isn’t complicated. It allows you to keep the
+application Kubernetes-agnostic. This is especially useful when you’re dealing with an
+existing application that expects certain data in environment variables. The Down-
+ward API allows you to expose the data to the application without having to rewrite
+the application or wrap it in a shell script, which collects the data and then exposes it
+through environment variables.
+But the metadata available through the Downward API is fairly limited. If you need
+more, you’ll need to obtain it from the Kubernetes API server directly. You’ll learn
+how to do that next.
+
+
+k8s API
+sometimes you want to know about other pods and resources defined in your cluster not just yourself
+
+kubectl cluster-info to get the URL
+curl -K <url> will give you an authorized response
+
+use kubctl proxy command, this runs a proxy server that accepts HTTP connections on your local machine and proxies them to the API server while taking care of authentication, so you don't have to pass the authentication token in every request. ensures you are talking to API server and not a man in the middle by verifying the server's certification on each request.
+
+
+kubectl get job batch-job -o json
+and via proxy
+curl localhost:8001/apis/batch/v1/namespaces/default/jobs/batch-job 
+
+are the same
+
+
+
+Calling apiu within a container. there is a default service called kubernetes that is the service for the API
+
+assume it has curl
+
+curl https://kubernetes
+will fail since no certifcatie 
+
+curl --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt https://kubernetes
+fail because no authentication even with a signed CA
+
+# curl recognizes the environment variable named 'CURL_CA_BUNDLE' if it is set, and uses the given path
+export CURL_CA_BUNDLE=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+curl -H "Authorization: Bearer $TOKEN" https://kubernetes
+
+if you want to get information about pods and resources the pod is running in, use the namespace file that is in the secret
+
+NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+curl -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/namespaces/$NS/pods
+
+by using the ca.cert, token, and namespace in the secret volume directory you can retrieve and even update API objects
+
+Let’s recap how an app running inside a pod can access the Kubernetes API properly:
+-The app should verify whether the API server’s certificate is signed by the certif-
+icate authority, whose certificate is in the ca.crt file.
+-The app should authenticate itself by sending the Authorization header with
+the bearer token from the token file.
+-The namespace file should be used to pass the namespace to the API server when
+performing CRUD operations on API objects inside the pod’s namespace.
+
+
+there's an example where the other container is co-located in a pod with an "ambassador" container that acts as the proxy to the API, that way developers can access the api with HTTP without having to bypass the security 
+
+This is a great example of how an ambassador container can be used to hide the
+complexities of connecting to an external service and simplify the app running in
+the main container. The ambassador container is reusable across many different apps,
+regardless of what language the main app is written in. The downside is that an addi-
+tional process is running and consuming additional resources.
+
+USING exising CLIENT LIBRARIES to communicated with K8S API
+the SIG has support for golang client, python
+there are other languages client libraries for e.g java client by fabric8
+
+these libraries usually support https and take care of authentication so you won't need to use the ambassador container
+
+
+
+SWAGGER API 617108
+there's one availabe
