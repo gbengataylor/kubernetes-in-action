@@ -17,14 +17,14 @@ is the gitRepo volume type, which we’ll introduce next.
 
 gitRepo
 - emptyDir populated with contents from a gitRepo
-- the volume is NOT kept in sync with git repo
+- the volume is NOT kept in sync with git repo (had to create a container that will keep it in sync, see example in folder- ./Chapter06/gitrepo-volume-pod-sidecar.yaml )
 - can't use this volume with a private git repo
 - when pod is deleted, all contents are deleted
 
 other types of volumes mount an existing exernal directory into the container's filesystem that can survive multiple pod instantations.
 
 hostPath
- - pods generally oblivious of their host node so shouldn't access ay files on the nodes filesystem
+ - pods generally oblivious of their host node so shouldn't access any files on the nodes filesystem
 - certain system level pods need to read node's files or use node's filessytem to access the node's devices through the filesystmem.
 - pods running on the same node and using the same path in their hostPath volume see the same files
 - when pod(s) deleted, contents not deleted unlike gitRepo and emptyDir
@@ -59,7 +59,6 @@ Note: this is the worker nodes not the pods!
 Note**
 if the PV reclaim policy is retain, and it was claimed then released (by deleting a pvc) then it can be reused.the only way to manually recylce th PV is to make it available again by deleting and recreating the PV. any files on the underlying storage you need decide what to do with it
 
-how do you relcaim PV dynamically?
 Recyle and Delete policies
 recycle removes the contents and makes the volume available to be claimed again
 delete removes the underlying storage
