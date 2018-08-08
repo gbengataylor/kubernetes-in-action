@@ -1,0 +1,126 @@
+to do a manual rolling update
+
+kubectl rolling-update kubia-v1 kubia-v2 --image=luksa/kubia:v2
+
+if you want to see the rest api log, increase logging level
+kubectl rolling-update kubia-v1 kubia-v2 --image=luksa/kubia:v2 --v 6
+
+
+this creates a second replication controller with the same selector however with a deployment label. the previous controller label has been updated also with a deployment label and also the running pods
+
+After setting up all this, kubectl starts replacing pods by first scaling up the new
+controller to 1. The controller thus creates the first v2 pod. kubectl then scales
+down the old ReplicationController by 1.
+
+why kubectl rolling-update is now obsolete
+At the beginning of this section, I mentioned an even better way of doing updates
+than through kubectl rolling-update . What’s so wrong with this process that a bet-
+ter one had to be introduced?
+Well, for starters, I, for one, don’t like Kubernetes modifying objects I’ve created.
+Okay, it’s perfectly fine for the scheduler to assign a node to my pods after I create
+them, but Kubernetes modifying the labels of my pods and the label selectors of my
+ReplicationController s is something that I don’t expect and could cause me to go
+around the office yelling at my colleagues, “Who’s been messing with my controllers!?!?”
+But even more importantly, if you’ve paid close attention to the words I’ve used,
+you probably noticed that all this time I said explicitly that the kubectl client was the
+one performing all these steps of the rolling update.
+You can see this by turning on verbose logging with the --v option when triggering
+the rolling update:
+$ kubectl rolling-update kubia-v1 kubia-v2 --image=luksa/kubia:v2 --v 6
+
+Using this option, kubectl will print out each HTTP request it sends to the Kuberne-
+tes API server. You’ll see PUT requests to
+/api/v1/namespaces/default/replicationcontrollers/kubia-v1
+which is the RESTful URL representing your kubia-v1 ReplicationController resource.
+These requests are the ones scaling down your ReplicationController, which shows
+that the kubectl client is the one doing the scaling, instead of it being performed by
+the Kubernetes master.
+But why is it such a bad thing that the update process is being performed by the client
+instead of on the server? Well, in your case, the update went smoothly, but what if you
+lost network connectivity while kubectl was performing the update? The update pro-
+cess would be interrupted mid-way. Pods and ReplicationControllers would end up in
+an intermediate state.
+Another reason why performing an update like this isn’t as good as it could be is
+because it’s imperative. Throughout this book, I’ve stressed how Kubernetes is about
+you telling it the desired state of the system and having Kubernetes achieve that
+state on its own, by figuring out the best way to do it. This is how pods are deployed
+and how pods are scaled up and down. You never tell Kubernetes to add an addi-
+tional pod or remove an excess one—you change the number of desired replicas
+and that’s it.
+Similarly, you will also want to change the desired image tag in your pod defini-
+tions and have Kubernetes replace the pods with new ones running the new image.
+This is exactly what drove the introduction of a new resource called a Deployment,
+which is now the preferred way of deploying applications in Kubernetes.
+
+Deployments
+for updating apps declaratively
+- when created, a ReplicaSet is created
+- the pods are actually managed by the ReplicaSet
+- the deployment will cordinate between the two sets when an update is done
+
+kubectl create -f kubia-deployment-v1.yaml --record
+
+--record records the command in the revision history
+
+Strategies
+- RollingUpdate (default) - remove one by one. you can slow this down spec.minReadySeconds
+- Recreate - delete all the old pods, then create new ones. this shoudl be used when app doesn't support multiple differennt versions in parallel and requires old one to be stopped before new one starts. this does include some short downtime
+
+to trigger an update to an image
+
+kubectl set image deployment kubia nodejs=luksa/kubia:v2
+kubectl set image deployment dc-name container-name=image
+
+This updates the image in the deployment
+the deployment creates a new RS, and then slowly does a rolling update
+
+to follow a deployment 
+kubectl rollout status deployment dc-name
+
+to undo
+
+kubectl rollout undo deployment kubia
+
+view rollout history
+
+kubectl rollout history deployment kubia
+
+Rollout to specific version
+kubectl rollout undo deployment kubia --to-revision=1
+
+if you search on all the rs, you'll see that all versions are still available. to prevent this from growing interminably you can set the revisionHistoryLimit property on the deployment resource. 
+
+maxSurge/maxUnavailable
+maxSurge Determines how many pod instances you allow to exist above the desired replica
+count configured on the Deployment. It defaults to 25%, so there can be at most
+25% more pod instances than the desired count. If the desired replica count is
+set to four, there will never be more than five pod instances running at the same
+time during an update. When converting a percentage to an absolute number,
+the number is rounded up. Instead of a percentage, the value can also be an
+absolute value (for example, one or two additional pods can be allowed).
+
+maxUnavailable Determines how many pod instances can be unavailable relative to the desired
+replica count during the update. It also defaults to 25%, so the number of avail-
+able pod instances must never fall below 75% of the desired replica count. Here,
+when converting a percentage to an absolute number, the number is rounded
+down. If the desired replica count is set to four and the percentage is 25%, only
+one pod can be unavailable. There will always be at least three pod instances
+available to serve requests during the whole rollout. As with maxSurge, you can
+also specify an absolute value instead of a percentage.
+
+
+pause a deployment
+kubectl rollout pause deployment kubia
+
+the rs is created but you can send traffic to this version  for testing (canary)
+
+resume
+kubectl rollout resume deployment kubia
+
+note:
+use readiness checks to avoid doing deployments from rolling out
+the deployment will fail if the progressDeadlineSeconds is reached
+
+
+final note:
+see kubia-deployment-and-service-v1.yaml on how to add multiple resoucrce objects in a yaml file separated by ---
