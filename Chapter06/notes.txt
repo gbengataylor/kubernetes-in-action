@@ -107,3 +107,4 @@ else is taken care of by the dynamic PersistentVolume provisioner.
 - provisioner provides the actual storage, creates the PV and binds to the PVC
 
 (
+CNS/OpenShift OCS - takes aware the admin to have to specify the storage class or PV. it handles the lifecycle management
