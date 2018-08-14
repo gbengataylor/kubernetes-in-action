@@ -1,0 +1,136 @@
+pods in a replica sets don't differ from each other except for thier name and IP address.
+if the pod template includes a volume, all pods refer to the same PVC
+
+how can you have each have it's own storage claim?
+StatefulSets!
+treat apps as pets not cattle
+
+We tend to treat our app instances as pets, where we give each instance a name and
+take care of each instance individually. But it’s usually better to treat instances as cattle
+and not pay special attention to each individual instance. This makes it easy to replace
+unhealthy instances without giving it a second thought, similar to the way a farmer
+replaces unhealthy cattle.
+Instances of a stateless app, for example, behave much like heads of cattle. It
+doesn’t matter if an instance dies—you can create a new instance and people won’t
+notice the difference.
+On the other hand, with stateful apps, an app instance is more like a pet. When a
+pet dies, you can’t go buy a new one and expect people not to notice. To replace a lost
+pet, you need to find a new one that looks and behaves exactly like the old one. In the
+case of apps, this means the new instance needs to have the same state and identity as
+the old one.
+
+
+A StatefulSet makes sure pods are rescheduled in such a way that they retain their
+identity and state. It also allows you to easily scale the number of pets up and down. A
+StatefulSet, like a ReplicaSet, has a desired replica count field that determines how
+many pets you want running at that time. Similar to ReplicaSets, pods are created from
+a pod template specified as part of the StatefulSet (remember the cookie-cutter anal-
+ogy?). But unlike pods created by ReplicaSets, pods created by the StatefulSet aren’t
+exact replicas of each other. Each can have its own set of volumes—in other words,
+storage (and thus persistent state)—which differentiates it from its peers. Pet pods
+also have a predictable (and stable) identity instead of each new pod instance getting
+a completely random one
+
+stateful pods can differ from each other so you need to create a corresponding governing headless service that's used to provide the actual network identity to each pod
+through this service, each pod get its own DNS entry so the individual pod can be addressed by name by its peer s and possibly other clients in the cluster
+
+a-0.foo.default.svc.cluster.local .
+a-0 - name of statuful pod
+foo - name of service
+default - namespace
+
+
+replacing lost pets -- when a pod dies, it's replaced with a new isntance but it gets the same name and hostname as the pod that disacppeared
+
+scaling - the index increases in the name. scaling down decreases the index. so unlike replica sets, with stateful pods you know which pod will be removed
+
+
+dedicated storage -  in stateful set you can specify a PVC template, which enables it to create a PVC for each stateful pod. when you scale down, the claim is left alone. if deleted, the PV is bound to get recycled or deleted and contents lost. you have to delete PVC manually to release the underlying PV
+
+reattaching the PVC claim to new instance of ppdo - k8s handles this
+
+STATEFUL SET’S AT-MOST-ONE SEMANTICS
+Kubernetes must thus take great care to ensure two stateful pod instances are never
+running with the same identity and are bound to the same PersistentVolumeClaim. A
+StatefulSet must guarantee at-most-one semantics for stateful pod instances.
+This means a StatefulSet must be absolutely certain that a pod is no longer run-
+ning before it can create a replacement pod. This has a big effect on how node fail-
+ures are handled.
+
+note:
+in persistent-volumes-hostpath.yaml it uses a list object instead of the three dashes to create multiple entries. both methods are equivalent.
+
+to create a stateful set, you need to first create a headless service which is the governing service
+
+
+if you have want to connect to a named pod with just a headless service then this can be accomplished via the API
+start the proxy -- kubectl proxy
+
+then hit via the proxy location
+
+curl localhost:8001/api/v1/namespaces/default/pods/kubia-1/proxy/
+
+kubia-1 is the name of the pod in this example
+
+if the pod dies, the pvc is retained and the newly created pod takes it over
+
+scaling down a pod leaves the pvcs untouched
+
+if you expose a regular cluterIP service for the pods, the resulting service will loadbalancer across the stateful pods
+
+for. e.g using the API via proxy curl localhost:8001/api/v1/namespaces/default/services/kubia-public/proxy/
+
+SO HOW DO WE DISCOVER PEERS IN A STATEFULSET???
+you could do this by talking to the k8s API but you don't want your APP to forced to be k8s aware
+this can be done using the DNS SRV records
+- SRV records are used to point to hostnames and ports of servers providing a specific
+service. Kubernetes creates SRV records to point to the hostnames of the pods back-
+ing a headless service.
+
+to find these record
+kubectl run -it srvlookup --image=tutum/dnsutils --rm --restart=Never -- dig SRV kubia.default.svc.cluster.local
+<kubia is the public service>
+in the result each pod has it's own A record, shown in the ADDITIONAL SECTION of the results
+
+e.g
+...
+;; ANSWER SECTION:
+k.d.s.c.l. 30 IN SRV
+k.d.s.c.l. 30 IN SRV
+10 33 0 kubia-0.kubia.default.svc.cluster.local.
+10 33 0 kubia-1.kubia.default.svc.cluster.local.
+;; ADDITIONAL SECTION:
+kubia-0.kubia.default.svc.cluster.local. 30 IN A 172.17.0.4
+kubia-1.kubia.default.svc.cluster.local. 30 IN A 172.17.0.6
+
+your client app can perform the SRV DNS lookup to discover the peers
+dns.resolveSrv("kubia.default.svc.cluster.local", callBackFunction);
+
+
+note: if you edit a already created statefulset to have the changes applied, you'll need to delete the existing ones. the reason is that they are more like replicaSets and not deployments so a rollout doesn't get performed when the template is modified
+
+HOW DO STATEFULSETS WORK WITH NODE FAILURES
+we stated that Kubernetes must be absolutely sure that a stateful
+pod is no longer running before creating its replacement. When a node fails
+abruptly, Kubernetes can’t know the state of the node or its pods. It can’t know
+whether the pods are no longer running, or if they still are and are possibly even still
+reachable, and it’s only the Kubelet that has stopped reporting the node’s state to
+the master.
+Because a StatefulSet guarantees that there will never be two pods running with
+the same identity and storage, when a node appears to have failed, the StatefulSet can-
+not and should not create a replacement pod until it knows for certain that the pod is
+no longer running.
+It can only know that when the cluster administrator tells it so. To do that, the
+admin needs to either delete the pod or delete the whole node (doing so then deletes
+all the pods scheduled to the node).
+
+if a node goes offline
+- node can no longer contact k8s API to inform it it is up and pods are running
+- k8s control plane will mark the node as NotReady (kubectl get node)
+- the control plane is no longer getting status updates from the node, so the status of all pods on that node is Unknown
+- if node were to come back online and report its status and that of the pods, the pod will be marked as Running
+- however if the status remains unknown for more than a few minutes (configurable), the pod is automatically evicted from the node
+- this is accomplished by the master and it evicts the pod by deleting the pod resource
+- once the pod is marked for deletion, the kubelet sees that ahd terminates the pod. However, THERE IS NO KUBELET since the kubelet on the node is offline. So the pod is still "terminating"
+- if you try to manually delete the pod, the StatefulSet, that won't work since the control plane already deleted it (ie evicted it from the node). it will only be removed when the kubelet on the node notifies the API server that the pod has been terminated. if network is offline, this will never happen
+- You have to forcifully delete the pod kubectl delete po kubia-0 --force --grace-perio 0. this tells the APU server to delete the pod without waiting for the Kubelet to confirm

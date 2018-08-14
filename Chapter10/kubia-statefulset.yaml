@@ -19,6 +19,7 @@ spec:
         volumeMounts:
         - name: data
           mountPath: /var/data
+#the pvc claim will be created from this template
   volumeClaimTemplates:
   - metadata:
       name: data
